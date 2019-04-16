@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.net.URLEncoder;
 
 import org.apache.http.HttpEntity;
+import org.apache.http.HttpHeaders;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -54,6 +55,8 @@ public class CitiesEngCrawler {
 			HttpGet httpGet = new HttpGet(
 					"https://suggests.rasp.yandex.net/all_suggests?field=from&format=old&lang=ru&national_version=ru&part="
 							+ URLEncoder.encode(city, "UTF8"));
+			httpGet.setHeader(HttpHeaders.USER_AGENT,
+					"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36");
 			CloseableHttpResponse response = httpclient.execute(httpGet);
 			HttpEntity entity = response.getEntity();
 			String json = EntityUtils.toString(entity);
