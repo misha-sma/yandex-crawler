@@ -8,6 +8,8 @@ import java.util.regex.Pattern;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHeaders;
 import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.config.CookieSpecs;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -30,6 +32,26 @@ public class TrainsCrawler {
 			"<div class=\"SearchSegment__scheduleDays[^>]*\"><!-- react-text: \\d+ -->([^<]+)<!-- /react-text --></div>");
 	public static final Pattern TRAIN_NAME_PATTERN = Pattern.compile(
 			"<span class=\"SegmentTransport__item SegmentTransport__item_deluxeTrain\"[^>]*>[^«]+«([^»]+)»</span>");
+
+	public static final Pattern STATION_PATTERN = Pattern.compile(
+			"<a href=\"/station/\\d+/\\?type=train\" class=\"Link ThreadTable__stationLink\" data-reactid=\"\\d+\"><!-- react-text: \\d+ -->([^<]*)<!-- /react-text --></a>");
+	public static final Pattern ARRIVAL_TIME_PATTERN = Pattern.compile(
+			"<div class=\"ThreadTable__wrapperInner\" data-reactid=\"\\d+\"><!-- react-text: \\d+ -->([^<]*)<!-- /react-text --></div>");
+	public static final Pattern STAY_TIME_PATTERN = Pattern.compile(
+			"<div class=\"ThreadTable__wrapperInner\" data-reactid=\"\\d+\"><span class=\"Duration\" data-reactid=\"\\d+\">([^<]*)</span></div>");
+	public static final Pattern DEPARTURE_TIME_PATTERN = Pattern.compile(
+			"<div class=\"ThreadTable__wrapperInner\" data-reactid=\"\\d+\"><!-- react-text: \\d+ -->([^<]*)<!-- /react-text --></div>");
+	public static final Pattern TRAVEL_TIME_PATTERN = Pattern.compile(
+			"<div class=\"ThreadTable__wrapperInner\" data-reactid=\"\\d+\"><span class=\"Duration\" data-reactid=\"\\d+\">([^<]*)</span></div>");
+
+	private static final CloseableHttpClient httpclient;
+	private static final RequestConfig localConfig;
+
+	static {
+		RequestConfig globalConfig = RequestConfig.custom().setCookieSpec(CookieSpecs.DEFAULT).build();
+		httpclient = HttpClients.custom().setDefaultRequestConfig(globalConfig).build();
+		localConfig = RequestConfig.copy(globalConfig).setCookieSpec(CookieSpecs.STANDARD).build();
+	}
 
 	public static void main6(String[] args) {
 		String str = "sdsd <div class=\"SearchSegment__scheduleDays\"><!-- react-text: 1127 -->16, 19, 22, 25, 27 Апреля и в др. дни<!-- /react-text --></div> sdsds";
@@ -80,7 +102,7 @@ public class TrainsCrawler {
 			}
 			String cityTo = city.substring(index + 1);
 			logger.info("cityTo=" + cityTo);
-			String trainsHtml = getTrainsHtml(cityFrom, cityTo);
+			String trainsHtml = getTrainsHtml(getTrainsUrl(cityFrom, cityTo));
 			parseTrainsHtml(trainsHtml);
 			// Thread.sleep(5000 + (long) (Math.random() * 5000));
 		}
@@ -88,7 +110,7 @@ public class TrainsCrawler {
 	}
 
 	public static void main(String[] args) {
-		String trainsHtml = getTrainsHtml("saint-petersburg", "cherepovets");
+		String trainsHtml = getTrainsHtml(getTrainsUrl("saint-petersburg", "cherepovets"));
 		try {
 			FileWriter fw = new FileWriter("/home/misha-sma/Trains/yandex-crawler/hhhh.html");
 			fw.write(trainsHtml);
@@ -136,22 +158,98 @@ public class TrainsCrawler {
 			}
 			logger.info(
 					"id=" + idTrain + " train=" + train + " name=" + name + " depDays=" + depDays + " href=" + href);
+			String timesHtml = getTrainsHtml("https://rasp.yandex.ru" + href);
+			try {
+				FileWriter fw = new FileWriter(
+						"/home/misha-sma/Trains/yandex-crawler/" + idTrain + "_" + Math.random() + ".html");
+				fw.write(timesHtml);
+				fw.close();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			try {
+				Thread.sleep(5000 + (long) (Math.random() * 10000));
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			timesHtml=timesHtml.replace("\n", "");
+					
+//			String[] timeParts = timesHtml
+//					.split("<tr class=\"ThreadTable__rowStation ThreadTable__rowStation_isStationFrom\"");
+			String[] timeParts = timesHtml
+					.split("ThreadTable__rowStation");
+			for (int j = 2; j < timeParts.length; ++j) {
+				String station = null;
+				String arrivalTime = null;
+				String stayTime = null;
+				String departureTime = null;
+				String travelTime = null;
+				int offset = 0;
+				Matcher m = STATION_PATTERN.matcher(timeParts[j]);
+				if (m.find()) {
+					station = m.group(1);
+					offset = m.end();
+				}
+				if(station==null) {
+					continue;
+				}
+				m = ARRIVAL_TIME_PATTERN.matcher(timeParts[j]);
+				if (m.find(offset)) {
+					arrivalTime = m.group(1);
+					offset = m.end();
+				}
+				m = STAY_TIME_PATTERN.matcher(timeParts[j]);
+				if (m.find(offset)) {
+					stayTime = m.group(1);
+					offset = m.end();
+				}
+				m = DEPARTURE_TIME_PATTERN.matcher(timeParts[j]);
+				if (m.find(offset)) {
+					departureTime = m.group(1);
+					offset = m.end();
+				}
+				m = TRAVEL_TIME_PATTERN.matcher(timeParts[j]);
+				if (m.find(offset)) {
+					travelTime = m.group(1);
+				}
+				logger.info(station + "  " + arrivalTime + "  " + stayTime + "  " + departureTime + "  " + travelTime);
+			}
 		}
 	}
 
-	private static String getTrainsHtml(String cityFrom, String cityTo) {
+	private static String getTrainsUrl(String cityFrom, String cityTo) {
+		return "https://rasp.yandex.ru/train/" + cityFrom + "--" + cityTo;
+	}
+
+	private static String getTrainsHtml(String url) {
+//		RequestConfig globalConfig = RequestConfig.custom()
+//                .setCookieSpec(CookieSpecs.DEFAULT)
+//                .build();
+//        CloseableHttpClient httpclient = HttpClients.custom()
+//                .setDefaultRequestConfig(globalConfig)
+//                .build();
+//        RequestConfig localConfig = RequestConfig.copy(globalConfig)
+//                .setCookieSpec(CookieSpecs.STANDARD)
+//                .build();
+//        HttpGet httpGet = new HttpGet(url);
+//        httpGet.setConfig(localConfig); 
+		
+		
 		String trainsHtml = null;
-		CloseableHttpClient httpclient = HttpClients.createDefault();
+//		CloseableHttpClient httpclient = HttpClients.createDefault();
 		try {
-			HttpGet httpGet = new HttpGet("https://rasp.yandex.ru/train/" + cityFrom + "--" + cityTo);
+			HttpGet httpGet = new HttpGet(url);
 			httpGet.setHeader(HttpHeaders.USER_AGENT,
 					"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36");
+			httpGet.setConfig(localConfig);
 			CloseableHttpResponse response = httpclient.execute(httpGet);
 			HttpEntity entity = response.getEntity();
 			trainsHtml = EntityUtils.toString(entity);
 			EntityUtils.consume(entity);
 			response.close();
-			httpclient.close();
+//			httpclient.close();
 		} catch (ClientProtocolException e) {
 			logger.error(e.getMessage(), e);
 		} catch (IOException e) {
