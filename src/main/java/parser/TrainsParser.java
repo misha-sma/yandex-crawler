@@ -25,6 +25,10 @@ public class TrainsParser {
 	public static final Pattern TRAVEL_TIME_PATTERN = Pattern
 			.compile("<div class=\"ThreadTable__wrapperInner\"><span class=\"Duration\">([^<]*)</span></div>");
 
+	public static final Pattern DAY_PATTERN = Pattern.compile("(\\d+) дн");
+	public static final Pattern STAY_TIME_PATTERN_4_DEP = Pattern
+			.compile("<div class=\"ThreadTable__wrapperInner\">([^<]*)</div>");
+
 	public static void main(String[] args) {
 		String path = "/home/misha-sma/Trains/yandex-crawler/files/html/";
 		File folder = new File(path);
@@ -41,6 +45,8 @@ public class TrainsParser {
 				fw.write(String.valueOf(idTrain));
 				fw.write("\n");
 
+				String depTime = "";
+				int depTimeMinutes = 0;
 				String[] timeParts = text.split("ThreadTable__rowStation");
 				for (int j = 2; j < timeParts.length; ++j) {
 					String station = null;
@@ -55,6 +61,13 @@ public class TrainsParser {
 						offset = m.end();
 					}
 					if (station == null) {
+						continue;
+					}
+					if (j == 2) {
+						depTime = parseDepartureTime(timeParts[j]);
+						logger.info("depTime=" + depTime);
+						depTimeMinutes = time2Minutes(depTime);
+						fw.write(station + " | 0 | 0\n");
 						continue;
 					}
 					m = ARRIVAL_TIME_PATTERN.matcher(timeParts[j]);
@@ -75,6 +88,18 @@ public class TrainsParser {
 					m = TRAVEL_TIME_PATTERN.matcher(timeParts[j]);
 					if (m.find(offset)) {
 						travelTime = m.group(1);
+						if (travelTime.contains("дн") && arrivalTime != null) {
+							Matcher mT = DAY_PATTERN.matcher(travelTime);
+							if (mT.find()) {
+								travelTime = mT.group();
+							}
+							int arrTimeMinutes = time2Minutes(arrivalTime);
+							int delta = arrTimeMinutes >= depTimeMinutes ? arrTimeMinutes - depTimeMinutes
+									: arrTimeMinutes + 24 * 60 - depTimeMinutes;
+							int hours = delta / 60;
+							int minutes = delta % 60;
+							travelTime += " " + hours + " ч " + minutes + " мин";
+						}
 					}
 					fw.write(station + " | " + stayTime + " | " + travelTime + "\n");
 				}
@@ -83,7 +108,6 @@ public class TrainsParser {
 				logger.error(e.getMessage(), e);
 			}
 		}
-
 		System.out.println("ENDDDD!!!!");
 	}
 
@@ -98,4 +122,34 @@ public class TrainsParser {
 		return -1;
 	}
 
+	private static int time2Minutes(String time) {
+		if (!time.matches("\\d{2}:\\d{2}")) {
+			logger.error("time=" + time);
+			return -1;
+		}
+		String[] parts = time.split(":");
+		return Integer.parseInt(parts[1]) + 60 * Integer.parseInt(parts[0]);
+	}
+
+	private static String parseDepartureTime(String html) {
+		int offset = 0;
+		Matcher m = STATION_PATTERN.matcher(html);
+		if (m.find()) {
+			offset = m.end();
+		}
+		m = ARRIVAL_TIME_PATTERN.matcher(html);
+		if (m.find(offset)) {
+			offset = m.end();
+		}
+		m = STAY_TIME_PATTERN_4_DEP.matcher(html);
+		if (m.find(offset)) {
+			offset = m.end();
+		}
+		m = DEPARTURE_TIME_PATTERN.matcher(html);
+		if (m.find(offset)) {
+			return m.group(1).trim();
+		}
+		logger.error("Departure time not found!!!");
+		return null;
+	}
 }
