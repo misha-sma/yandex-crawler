@@ -32,6 +32,7 @@ public class TrainsParser {
 			if (file.isDirectory()) {
 				continue;
 			}
+			logger.info("file=" + file.getName());
 			String text = Util.loadText(file).replace("\n", "");
 			int idTrain = parseIdTrain(file);
 			try {
