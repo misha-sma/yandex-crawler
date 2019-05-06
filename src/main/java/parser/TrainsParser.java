@@ -15,19 +15,21 @@ public class TrainsParser {
 	private static final Logger logger = LoggerFactory.getLogger(TrainsParser.class);
 
 	public static final Pattern STATION_PATTERN = Pattern.compile(
-			"<a href=\"https://rasp.yandex.ru/station/\\d+/\\?type=train\" class=\"Link ThreadTable__stationLink\"><!-- react-text: \\d+ -->([^<]*)<!-- /react-text --></a>");
+			"<a href=\"(https://rasp.yandex.ru)?/station/\\d+/\\?type=train\" class=\"Link ThreadTable__stationLink\"( data-reactid=\"\\d+\")?><!-- react-text: \\d+ -->([^<]*)<!-- /react-text --></a>");
 	public static final Pattern ARRIVAL_TIME_PATTERN = Pattern.compile(
-			"<div class=\"ThreadTable__wrapperInner\"><!-- react-text: \\d+ -->([^<]*)<!-- /react-text --></div>");
-	public static final Pattern STAY_TIME_PATTERN = Pattern
-			.compile("<div class=\"ThreadTable__wrapperInner\"><span class=\"Duration\">([^<]*)</span></div>");
+			"<div class=\"ThreadTable__wrapperInner\"( data-reactid=\"\\d+\")?><!-- react-text: \\d+ -->([^<]*)<!-- /react-text --></div>");
+	public static final Pattern STAY_TIME_PATTERN = Pattern.compile(
+			"<div class=\"ThreadTable__wrapperInner\"( data-reactid=\"\\d+\")?><span class=\"Duration\"( data-reactid=\"\\d+\")?>([^<]*)</span></div>");
 	public static final Pattern DEPARTURE_TIME_PATTERN = Pattern.compile(
-			"<div class=\"ThreadTable__wrapperInner\"><!-- react-text: \\d+ -->([^<]*)<!-- /react-text --></div>");
-	public static final Pattern TRAVEL_TIME_PATTERN = Pattern
-			.compile("<div class=\"ThreadTable__wrapperInner\"><span class=\"Duration\">([^<]*)</span></div>");
+			"<div class=\"ThreadTable__wrapperInner\"( data-reactid=\"\\d+\")?><!-- react-text: \\d+ -->([^<]*)<!-- /react-text --></div>");
+	public static final Pattern TRAVEL_TIME_PATTERN = Pattern.compile(
+			"<div class=\"ThreadTable__wrapperInner\"( data-reactid=\"\\d+\")?><span class=\"Duration\"( data-reactid=\"\\d+\")?>([^<]*)</span></div>");
 
 	public static final Pattern DAY_PATTERN = Pattern.compile("(\\d+) дн");
 	public static final Pattern STAY_TIME_PATTERN_4_DEP = Pattern
-			.compile("<div class=\"ThreadTable__wrapperInner\">([^<]*)</div>");
+			.compile("<div class=\"ThreadTable__wrapperInner\"( data-reactid=\"\\d+\")?>([^<]*)</div>");
+
+	public static final Pattern TIME_ZONE_PATTERN = Pattern.compile("Местное время МСК \\+(\\d+) ч");
 
 	public static void main(String[] args) {
 		String path = "/home/misha-sma/Trains/yandex-crawler/files/html/";
@@ -47,7 +49,13 @@ public class TrainsParser {
 
 				String depTime = "";
 				int depTimeMinutes = 0;
+				int deltaTimeZone = 0;
+				boolean isReverse = false;
 				String[] timeParts = text.split("ThreadTable__rowStation");
+				Matcher m = TIME_ZONE_PATTERN.matcher(timeParts[0]);
+				if (m.find()) {
+					isReverse = true;
+				}
 				for (int j = 2; j < timeParts.length; ++j) {
 					String station = null;
 					String arrivalTime = null;
@@ -55,9 +63,9 @@ public class TrainsParser {
 					String departureTime = null;
 					String travelTime = null;
 					int offset = 0;
-					Matcher m = STATION_PATTERN.matcher(timeParts[j]);
+					m = STATION_PATTERN.matcher(timeParts[j]);
 					if (m.find()) {
-						station = m.group(1);
+						station = m.group(3);
 						offset = m.end();
 					}
 					if (station == null) {
@@ -72,34 +80,45 @@ public class TrainsParser {
 					}
 					m = ARRIVAL_TIME_PATTERN.matcher(timeParts[j]);
 					if (m.find(offset)) {
-						arrivalTime = m.group(1);
+						arrivalTime = m.group(2);
 						offset = m.end();
 					}
 					m = STAY_TIME_PATTERN.matcher(timeParts[j]);
 					if (m.find(offset)) {
-						stayTime = m.group(1);
+						stayTime = m.group(3);
 						offset = m.end();
 					}
 					m = DEPARTURE_TIME_PATTERN.matcher(timeParts[j]);
 					if (m.find(offset)) {
-						departureTime = m.group(1);
+						departureTime = m.group(2);
 						offset = m.end();
 					}
 					m = TRAVEL_TIME_PATTERN.matcher(timeParts[j]);
 					if (m.find(offset)) {
-						travelTime = m.group(1);
+						travelTime = m.group(3);
 						if (travelTime.contains("дн") && arrivalTime != null) {
 							Matcher mT = DAY_PATTERN.matcher(travelTime);
 							if (mT.find()) {
 								travelTime = mT.group();
 							}
 							int arrTimeMinutes = time2Minutes(arrivalTime);
+							arrTimeMinutes -= deltaTimeZone;
 							int delta = arrTimeMinutes >= depTimeMinutes ? arrTimeMinutes - depTimeMinutes
 									: arrTimeMinutes + 24 * 60 - depTimeMinutes;
 							int hours = delta / 60;
 							int minutes = delta % 60;
 							travelTime += " " + hours + " ч " + minutes + " мин";
 						}
+					}
+					m = TIME_ZONE_PATTERN.matcher(timeParts[j]);
+					if (m.find()) {
+						if (isReverse) {
+							deltaTimeZone -= 60;
+						} else {
+							deltaTimeZone = 60 * Integer.parseInt(m.group(1));
+						}
+					} else if (timeParts[j].contains("Московское время")) {
+						deltaTimeZone -= 60;
 					}
 					fw.write(station + " | " + stayTime + " | " + travelTime + "\n");
 				}
@@ -147,7 +166,7 @@ public class TrainsParser {
 		}
 		m = DEPARTURE_TIME_PATTERN.matcher(html);
 		if (m.find(offset)) {
-			return m.group(1).trim();
+			return m.group(2).trim();
 		}
 		logger.error("Departure time not found!!!");
 		return null;
