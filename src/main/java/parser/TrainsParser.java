@@ -69,6 +69,7 @@ public class TrainsParser {
 						offset = m.end();
 					}
 					if (station == null) {
+						deltaTimeZone = getDeltaTimeZone(timeParts[j], deltaTimeZone, isReverse);
 						continue;
 					}
 					if (j == 2) {
@@ -110,16 +111,7 @@ public class TrainsParser {
 							travelTime += " " + hours + " ч " + minutes + " мин";
 						}
 					}
-					m = TIME_ZONE_PATTERN.matcher(timeParts[j]);
-					if (m.find()) {
-						if (isReverse) {
-							deltaTimeZone -= 60;
-						} else {
-							deltaTimeZone = 60 * Integer.parseInt(m.group(1));
-						}
-					} else if (timeParts[j].contains("Московское время")) {
-						deltaTimeZone -= 60;
-					}
+					deltaTimeZone = getDeltaTimeZone(timeParts[j], deltaTimeZone, isReverse);
 					fw.write(station + " | " + stayTime + " | " + travelTime + "\n");
 				}
 				fw.close();
@@ -128,6 +120,20 @@ public class TrainsParser {
 			}
 		}
 		System.out.println("ENDDDD!!!!");
+	}
+
+	private static int getDeltaTimeZone(String html, int deltaTimeZone, boolean isReverse) {
+		Matcher m = TIME_ZONE_PATTERN.matcher(html);
+		if (m.find()) {
+			if (isReverse) {
+				deltaTimeZone -= 60;
+			} else {
+				deltaTimeZone = 60 * Integer.parseInt(m.group(1));
+			}
+		} else if (html.contains("Московское время")) {
+			deltaTimeZone -= 60;
+		}
+		return deltaTimeZone;
 	}
 
 	private static int parseIdTrain(File file) {
