@@ -111,6 +111,9 @@ public class TrainsParser {
 							}
 							int arrTimeMinutes = time2Minutes(arrivalTime);
 							arrTimeMinutes -= 60 * deltaTimeZone;
+							if (arrTimeMinutes < 0) {
+								arrTimeMinutes = 60 * 24 + arrTimeMinutes;
+							}
 							int delta = arrTimeMinutes >= depTimeMinutes ? arrTimeMinutes - depTimeMinutes
 									: arrTimeMinutes + 24 * 60 - depTimeMinutes;
 							int hours = delta / 60;
