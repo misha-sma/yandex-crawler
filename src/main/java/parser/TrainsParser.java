@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import crawler.util.Util;
+import validator.TimesValidator;
 
 public class TrainsParser {
 	private static final Logger logger = LoggerFactory.getLogger(TrainsParser.class);
@@ -50,11 +51,10 @@ public class TrainsParser {
 				String depTime = "";
 				int depTimeMinutes = 0;
 				int deltaTimeZone = 0;
-				boolean isReverse = false;
 				String[] timeParts = text.split("ThreadTable__rowStation");
 				Matcher m = TIME_ZONE_PATTERN.matcher(timeParts[0]);
 				if (m.find()) {
-					isReverse = true;
+					deltaTimeZone = Integer.parseInt(m.group(1));
 				}
 				for (int j = 2; j < timeParts.length; ++j) {
 					String station = null;
@@ -69,13 +69,20 @@ public class TrainsParser {
 						offset = m.end();
 					}
 					if (station == null) {
-						deltaTimeZone = getDeltaTimeZone(timeParts[j], deltaTimeZone, isReverse);
+						deltaTimeZone = getDeltaTimeZone(timeParts[j], deltaTimeZone);
 						continue;
 					}
 					if (j == 2) {
 						depTime = parseDepartureTime(timeParts[j]);
-						logger.info("depTime=" + depTime);
+						logger.info("depTimeLocal=" + depTime);
 						depTimeMinutes = time2Minutes(depTime);
+						depTimeMinutes -= 60 * deltaTimeZone;
+						if (depTimeMinutes < 0) {
+							depTimeMinutes = 60 * 24 + depTimeMinutes;
+						}
+						int hoursMsk = depTimeMinutes / 60;
+						int minutesMsk = depTimeMinutes % 60;
+						logger.info("depTimeMsk=" + hoursMsk + ":" + minutesMsk);
 						fw.write(station + " | 0 | 0\n");
 						continue;
 					}
@@ -103,7 +110,7 @@ public class TrainsParser {
 								travelTime = mT.group();
 							}
 							int arrTimeMinutes = time2Minutes(arrivalTime);
-							arrTimeMinutes -= deltaTimeZone;
+							arrTimeMinutes -= 60 * deltaTimeZone;
 							int delta = arrTimeMinutes >= depTimeMinutes ? arrTimeMinutes - depTimeMinutes
 									: arrTimeMinutes + 24 * 60 - depTimeMinutes;
 							int hours = delta / 60;
@@ -111,7 +118,7 @@ public class TrainsParser {
 							travelTime += " " + hours + " ч " + minutes + " мин";
 						}
 					}
-					deltaTimeZone = getDeltaTimeZone(timeParts[j], deltaTimeZone, isReverse);
+					deltaTimeZone = getDeltaTimeZone(timeParts[j], deltaTimeZone);
 					fw.write(station + " | " + stayTime + " | " + travelTime + "\n");
 				}
 				fw.close();
@@ -119,19 +126,16 @@ public class TrainsParser {
 				logger.error(e.getMessage(), e);
 			}
 		}
+		TimesValidator.validate();
 		System.out.println("ENDDDD!!!!");
 	}
 
-	private static int getDeltaTimeZone(String html, int deltaTimeZone, boolean isReverse) {
+	private static int getDeltaTimeZone(String html, int deltaTimeZone) {
 		Matcher m = TIME_ZONE_PATTERN.matcher(html);
 		if (m.find()) {
-			if (isReverse) {
-				deltaTimeZone -= 60;
-			} else {
-				deltaTimeZone = 60 * Integer.parseInt(m.group(1));
-			}
+			deltaTimeZone = Integer.parseInt(m.group(1));
 		} else if (html.contains("Московское время")) {
-			deltaTimeZone -= 60;
+			deltaTimeZone = 0;
 		}
 		return deltaTimeZone;
 	}
