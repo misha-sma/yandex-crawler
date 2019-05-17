@@ -3,6 +3,8 @@ package parser;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -35,6 +37,7 @@ public class TrainsParser {
 	public static void main(String[] args) {
 		String path = "/home/misha-sma/Trains/yandex-crawler/files/html/";
 		File folder = new File(path);
+		Map<String, String> countsMap = loadPeoplesCounts();
 		for (File file : folder.listFiles()) {
 			if (file.isDirectory()) {
 				continue;
@@ -83,7 +86,10 @@ public class TrainsParser {
 						int hoursMsk = depTimeMinutes / 60;
 						int minutesMsk = depTimeMinutes % 60;
 						logger.info("depTimeMsk=" + hoursMsk + ":" + minutesMsk);
-						fw.write(station + " | 0 | 0\n");
+						String stationTrue = cleanStation(station);
+						String counts = countsMap.get(stationTrue);
+						counts = counts == null ? "0" : counts;
+						fw.write(stationTrue + " | 0 | 0 | " + counts + "\n");
 						continue;
 					}
 					m = ARRIVAL_TIME_PATTERN.matcher(timeParts[j]);
@@ -122,7 +128,10 @@ public class TrainsParser {
 						}
 					}
 					deltaTimeZone = getDeltaTimeZone(timeParts[j], deltaTimeZone);
-					fw.write(station + " | " + stayTime + " | " + travelTime + "\n");
+					String stationTrue = cleanStation(station);
+					String counts = countsMap.get(stationTrue);
+					counts = counts == null ? "0" : counts;
+					fw.write(stationTrue + " | " + stayTime + " | " + travelTime + " | " + counts + "\n");
 				}
 				fw.close();
 			} catch (IOException e) {
@@ -130,7 +139,12 @@ public class TrainsParser {
 			}
 		}
 		TimesValidator.validate();
-		System.out.println("ENDDDD!!!!");
+		logger.info("ENDDDD!!!!");
+	}
+
+	private static String cleanStation(String station) {
+		return station.replace("-1", "").replace("-2", "").replace("-Пасс.", "").replace("-главный", "")
+				.replaceAll("\\([^в]+вокзал\\)", "").trim();
 	}
 
 	private static int getDeltaTimeZone(String html, int deltaTimeZone) {
@@ -183,5 +197,22 @@ public class TrainsParser {
 		}
 		logger.error("Departure time not found!!!");
 		return null;
+	}
+
+	private static Map<String, String> loadPeoplesCounts() {
+		String path = "/home/misha-sma/Trains/perepis-2010-true.txt";
+		String text = Util.loadText(path);
+		String[] lines = text.split("\n");
+		Map<String, String> countsMap = new HashMap<String, String>();
+		for (String line : lines) {
+			String[] parts = line.split("\\|");
+			if (parts.length != 2) {
+				continue;
+			}
+			String name = parts[0].trim();
+			String counts = parts[1].trim();
+			countsMap.put(name, counts);
+		}
+		return countsMap;
 	}
 }
